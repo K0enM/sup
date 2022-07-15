@@ -10,7 +10,11 @@ fn main() -> Result<(), Box<dyn Error>>{
         exit(1)
     });
 
-    icmp::ping(arg.parse()?)?;
-
+    let dest = arg.parse()?;
+    icmp::Request::new(dest)
+        .ttl(128)
+        .timeout(4000)
+        .data("Country roads, take me home")
+        .send()?;
     Ok(())
 }

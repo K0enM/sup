@@ -1,6 +1,6 @@
 use std::{fmt, num::ParseIntError, ops::Add};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Addr(pub [u8; 4]);
 
 #[derive(Debug)]

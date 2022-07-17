@@ -1,9 +1,10 @@
-use std::mem;
+use core::slice;
+use std::{mem::{size_of, transmute}, time::Duration};
 
 use crate::icmp::icmp_sys::IcmpEchoReply;
 use crate::ipv4;
 
-use self::icmp_sys::IpOptionInformation;
+use self::icmp_sys::{IpOptionInformation, IcmpSendEcho};
 
 mod icmp_sys;
 
@@ -16,7 +17,7 @@ pub struct Request {
 
 impl Request {
     pub fn new(dest: ipv4::Addr) -> Self {
-        Self { 
+        Self {
             dest: dest,
             ttl: 128,
             timeout: 4000,
@@ -35,20 +36,22 @@ impl Request {
     }
 
     pub fn data<D>(mut self, data: D) -> Self
-    where D: Into<Vec<u8>> {
+    where
+        D: Into<Vec<u8>>,
+    {
         self.data = Some(data.into());
         self
     }
 
-    pub fn send(self) -> Result<(), String> {
+    pub fn send(self) -> Result<Reply, String> {
+
         let handle = icmp_sys::IcmpCreateFile();
 
         let data = self.data.unwrap_or_default();
 
-        let reply_size = mem::size_of::<IcmpEchoReply>();
+        let reply_size = size_of::<IcmpEchoReply>();
         let reply_buf_size = reply_size + 8 + data.len();
         let mut reply_buf = vec![0u8; reply_buf_size];
-        let timeout = 4000_u32;
 
         let ip_options = icmp_sys::IpOptionInformation {
             ttl: self.ttl,
@@ -57,8 +60,8 @@ impl Request {
             options_data: 0,
             options_size: 0,
         };
-    
-        match icmp_sys::IcmpSendEcho(
+
+        let ret = IcmpSendEcho(
             handle,
             self.dest,
             data.as_ptr(),
@@ -67,13 +70,34 @@ impl Request {
             reply_buf.as_mut_ptr(),
             reply_buf_size as u32,
             self.timeout,
-        ) {
+        );
+
+        icmp_sys::IcmpCloseHandle(handle);
+
+        match ret {
             0 => Err("IcmpSendEcho failed!".to_string()),
-            _ => Ok(()),
+            _ => {
+                let reply: &icmp_sys::IcmpEchoReply = unsafe { transmute(&reply_buf[0]) };
+
+                let data: Vec<u8> = unsafe {
+                    let data_ptr: *const u8 = transmute(&reply_buf[reply_size + 8]);
+                    slice::from_raw_parts(data_ptr, reply.data_size as usize)
+                }.into();
+
+                Ok(Reply {
+                    addr: reply.address,
+                    data,
+                    rtt: Duration::from_millis(reply.rtt as u64),
+                    ttl: reply.options.ttl,
+                })
+            },
         }
     }
 }
 
 pub struct Reply {
-    // TODO
+    pub addr: ipv4::Addr,
+    pub data: Vec<u8>,
+    pub rtt: Duration,
+    pub ttl: u8,
 }

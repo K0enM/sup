@@ -1,4 +1,4 @@
-use std::{fmt, num::ParseIntError, ops::Add};
+use std::{fmt::{self, write}, num::ParseIntError, ops::Add};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Addr(pub [u8; 4]);
